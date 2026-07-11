@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>K-Means Clustering &amp; Elbow Method — Interactive Demo</title>
+<style>
+  :root{
+    --bg:#0f1115;
+    --panel:#161a22;
+    --panel-border:#262c38;
+    --ink:#e8ecf3;
+    --muted:#8b93a7;
+    --accent:#5eead4;
+    --accent2:#f5a623;
+    --grid:#1f2530;
+    --c0:#5eead4;
+    --c1:#f5a623;
+    --c2:#c084fc;
+    --c3:#fb7185;
+    --c4:#60a5fa;
+    --c5:#a3e635;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'Segoe UI', Roboto, -apple-system, sans-serif;
+    padding:24px;
+  }
+  h1{
+    font-size:1.5rem;
+    margin:0 0 4px;
+    letter-spacing:0.3px;
+  }
+  .subtitle{
+    color:var(--muted);
+    margin:0 0 20px;
+    font-size:0.95rem;
+  }
+  .layout{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:20px;
+    max-width:1200px;
+    margin:0 auto;
+  }
+  @media (max-width: 900px){
+    .layout{grid-template-columns:1fr;}
+  }
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--panel-border);
+    border-radius:12px;
+    padding:18px;
+  }
+  .panel h2{
+    font-size:1.05rem;
+    margin:0 0 6px;
+  }
+  .panel p.desc{
+    color:var(--muted);
+    font-size:0.85rem;
+    margin:0 0 14px;
+    line-height:1.4;
+  }
+  canvas{
+    background:#0b0d12;
+    border:1px solid var(--grid);
+    border-radius:8px;
+    display:block;
+    width:100%;
+    cursor:crosshair;
+    touch-action:none;
+  }
+  .controls{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    margin-top:12px;
+    align-items:center;
+  }
+  button{
+    background:#1e2430;
+    color:var(--ink);
+    border:1px solid var(--panel-border);
+    padding:8px 14px;
+    border-radius:7px;
+    font-size:0.85rem;
+    cursor:pointer;
+    transition:background 0.15s, border-color 0.15s;
+  }
+  button:hover{
+    background:#262e3d;
+    border-color:var(--accent);
+  }
+  button.primary{
+    background:var(--accent);
+    color:#0b0d12;
+    font-weight:600;
+    border:none;
+  }
+  button.primary:hover{
+    background:#7ff2df;
+  }
+  button:disabled{
+    opacity:0.4;
+    cursor:not-allowed;
+  }
+  label{
+    font-size:0.82rem;
+    color:var(--muted);
+    display:flex;
+    align-items:center;
+    gap:6px;
+  }
+  input[type=range]{
+    accent-color:var(--accent);
+  }
+  .stat-row{
+    display:flex;
+    gap:18px;
+    margin-top:12px;
+    flex-wrap:wrap;
+    font-size:0.82rem;
+    color:var(--muted);
+  }
+  .stat-row b{
+    color:var(--ink);
+  }
+  .badge{
+    display:inline-block;
+    background:#1e2430;
+    border:1px solid var(--panel-border);
+    padding:2px 9px;
+    border-radius:100px;
+    font-size:0.75rem;
+    color:var(--muted);
+  }
+  .note{
+    font-size:0.78rem;
+    color:var(--muted);
+    margin-top:10px;
+    line-height:1.5;
+    border-top:1px solid var(--panel-border);
+    padding-top:10px;
+  }
+  .elbow-point{
+    fill:var(--accent2);
+  }
+</style>
+</head>
+<body>
+
+<h1>K-Means Clustering &amp; the Elbow Method</h1>
+<p class="subtitle">Click on the left canvas to drop data points, then run K-Means step by step. Use the right panel to see how WCSS drops as K increases — and spot the elbow.</p>
+
+<div class="layout">
+
+  <!-- LEFT PANEL: K-Means Playground -->
+  <div class="panel">
+    <h2>1. K-Means Playground</h2>
+    <p class="desc">Click anywhere on the canvas to add a data point. Choose K, then step through assignment &amp; update rounds to watch centroids converge.</p>
+
+    <canvas id="kmeansCanvas" width="520" height="380"></canvas>
+
+    <div class="controls">
+      <label>K = <input type="range" id="kSlider" min="1" max="6" value="3"><span id="kValue">3</span></label>
+      <button id="initBtn">Place Centroids</button>
+      <button id="stepBtn" class="primary" disabled>Step ▶</button>
+      <button id="runBtn" disabled>Run to Convergence</button>
+      <button id="clearBtn">Clear Points</button>
+      <button id="randomBtn">Random Points</button>
+    </div>
+
+    <div class="stat-row">
+      <span>Points: <b id="pointCount">0</b></span>
+      <span>Iteration: <b id="iterCount">0</b></span>
+      <span>WCSS: <b id="wcssValue">–</b></span>
+      <span class="badge" id="statusBadge">Add points to begin</span>
+    </div>
+
+    <div class="note">
+      <b>How to read it:</b> Colored dots = data points. Black-ringed dots = centroids (cluster means). Each step first re-assigns every point to its nearest centroid (by color), then moves each centroid to the average position of its cluster.
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL: Elbow Method -->
+  <div class="panel">
+    <h2>2. Elbow Method</h2>
+    <p class="desc">Using the same points from the left canvas, this runs K-Means for K = 1 to 8 and plots WCSS (inertia) against K. The "elbow" — where the curve bends and flattens — suggests a good K.</p>
+
+    <canvas id="elbowCanvas" width="520" height="380"></canvas>
+
+    <div class="controls">
+      <button id="elbowBtn" class="primary">Compute Elbow Curve</button>
+    </div>
+
+    <div class="stat-row">
+      <span>Suggested K: <b id="suggestedK">–</b></span>
+      <span class="badge">Needs points on the left canvas</span>
+    </div>
+
+    <div class="note">
+      <b>How to read it:</b> WCSS always decreases as K increases. Look for the point where adding another cluster stops giving a big drop — that bend is the "elbow," and it's usually the best trade-off between accuracy and simplicity.
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  const colors = ['#5eead4','#f5a623','#c084fc','#fb7185','#60a5fa','#a3e635'];
+
+  // ---------- K-MEANS PLAYGROUND ----------
+  const canvas = document.getElementById('kmeansCanvas');
+  const ctx = canvas.getContext('2d');
+  const kSlider = document.getElementById('kSlider');
+  const kValueLabel = document.getElementById('kValue');
+  const initBtn = document.getElementById('initBtn');
+  const stepBtn = document.getElementById('stepBtn');
+  const runBtn = document.getElementById('runBtn');
+  const clearBtn = document.getElementById('clearBtn');
+  const randomBtn = document.getElementById('randomBtn');
+  const pointCountEl = document.getElementById('pointCount');
+  const iterCountEl = document.getElementById('iterCount');
+  const wcssValueEl = document.getElementById('wcssValue');
+  const statusBadge = document.getElementById('statusBadge');
+
+  let points = [];       // {x,y,cluster}
+  let centroids = [];    // {x,y}
+  let iteration = 0;
+  let converged = false;
+
+  function resizeCanvas(c){
+    const ratio = window.devicePixelRatio || 1;
+    const displayWidth = c.clientWidth;
+    const displayHeight = c.getAttribute('height') / c.getAttribute('width') * displayWidth;
+    c.style.height = displayHeight + 'px';
+  }
+
+  function dist(a,b){
+    return Math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2);
+  }
+
+  function drawKmeans(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    // faint grid
+    ctx.strokeStyle = '#1a1f29';
+    ctx.lineWidth = 1;
+    for(let gx=0; gx<canvas.width; gx+=40){
+      ctx.beginPath(); ctx.moveTo(gx,0); ctx.lineTo(gx,canvas.height); ctx.stroke();
+    }
+    for(let gy=0; gy<canvas.height; gy+=40){
+      ctx.beginPath(); ctx.moveTo(0,gy); ctx.lineTo(canvas.width,gy); ctx.stroke();
+    }
+
+    // points
+    points.forEach(p=>{
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 5, 0, Math.PI*2);
+      ctx.fillStyle = (p.cluster===undefined) ? '#8b93a7' : colors[p.cluster % colors.length];
+      ctx.fill();
+    });
+
+    // centroids
+    centroids.forEach((c,i)=>{
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, 9, 0, Math.PI*2);
+      ctx.fillStyle = colors[i % colors.length];
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#0b0d12';
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, 9, 0, Math.PI*2);
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = '#ffffff';
+      ctx.stroke();
+    });
+  }
+
+  function computeWCSS(){
+    if(centroids.length===0) return null;
+    let sum = 0;
+    points.forEach(p=>{
+      if(p.cluster!==undefined){
+        sum += dist(p, centroids[p.cluster])**2;
+      }
+    });
+    return sum;
+  }
+
+  function updateStats(){
+    pointCountEl.textContent = points.length;
+    iterCountEl.textContent = iteration;
+    const w = computeWCSS();
+    wcssValueEl.textContent = w===null ? '–' : w.toFixed(0);
+  }
+
+  canvas.addEventListener('click', (e)=>{
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+    points.push({x,y,cluster:undefined});
+    centroids = [];
+    iteration = 0;
+    converged = false;
+    stepBtn.disabled = true;
+    runBtn.disabled = true;
+    statusBadge.textContent = 'Points added — click "Place Centroids"';
+    drawKmeans();
+    updateStats();
+  });
+
+  kSlider.addEventListener('input', ()=>{
+    kValueLabel.textContent = kSlider.value;
+  });
+
+  initBtn.addEventListener('click', ()=>{
+    if(points.length === 0){
+      statusBadge.textContent = 'Add some points first!';
+      return;
+    }
+    const k = Math.min(parseInt(kSlider.value), points.length);
+    // pick k random distinct points as initial centroids
+    const shuffled = [...points].sort(()=>Math.random()-0.5);
+    centroids = shuffled.slice(0,k).map(p=>({x:p.x, y:p.y}));
+    points.forEach(p=>p.cluster = undefined);
+    iteration = 0;
+    converged = false;
+    stepBtn.disabled = false;
+    runBtn.disabled = false;
+    statusBadge.textContent = 'Centroids placed — click "Step" to assign points';
+    drawKmeans();
+    updateStats();
+  });
+
+  function assignStep(){
+    points.forEach(p=>{
+      let best = 0, bestDist = Infinity;
+      centroids.forEach((c,i)=>{
+        const d = dist(p,c);
+        if(d < bestDist){ bestDist = d; best = i; }
+      });
+      p.cluster = best;
+    });
+  }
+
+  function updateStep(){
+    let moved = false;
+    centroids.forEach((c,i)=>{
+      const members = points.filter(p=>p.cluster===i);
+      if(members.length===0) return;
+      const mx = members.reduce((s,p)=>s+p.x,0)/members.length;
+      const my = members.reduce((s,p)=>s+p.y,0)/members.length;
+      if(Math.abs(mx-c.x)>0.5 || Math.abs(my-c.y)>0.5) moved = true;
+      c.x = mx; c.y = my;
+    });
+    return moved;
+  }
+
+  function doOneRound(){
+    assignStep();
+    const moved = updateStep();
+    iteration++;
+    if(!moved){
+      converged = true;
+    }
+    return moved;
+  }
+
+  stepBtn.addEventListener('click', ()=>{
+    if(converged){
+      statusBadge.textContent = 'Converged! Centroids are stable.';
+      return;
+    }
+    doOneRound();
+    drawKmeans();
+    updateStats();
+    if(converged){
+      statusBadge.textContent = 'Converged! Centroids are stable.';
+      stepBtn.disabled = true;
+      runBtn.disabled = true;
+    } else {
+      statusBadge.textContent = 'Round ' + iteration + ' done — click Step again';
+    }
+  });
+
+  runBtn.addEventListener('click', ()=>{
+    let safety = 0;
+    let moved = true;
+    while(moved && safety < 100){
+      moved = doOneRound();
+      safety++;
+    }
+    drawKmeans();
+    updateStats();
+    statusBadge.textContent = 'Converged after ' + iteration + ' iterations';
+    stepBtn.disabled = true;
+    runBtn.disabled = true;
+  });
+
+  clearBtn.addEventListener('click', ()=>{
+    points = [];
+    centroids = [];
+    iteration = 0;
+    converged = false;
+    stepBtn.disabled = true;
+    runBtn.disabled = true;
+    statusBadge.textContent = 'Add points to begin';
+    drawKmeans();
+    updateStats();
+  });
+
+  randomBtn.addEventListener('click', ()=>{
+    points = [];
+    // generate 3 loose blobs for a nice demo
+    const blobs = [
+      {cx:130, cy:110, n:12},
+      {cx:390, cy:120, n:12},
+      {cx:260, cy:300, n:12}
+    ];
+    blobs.forEach(b=>{
+      for(let i=0;i<b.n;i++){
+        points.push({
+          x: b.cx + (Math.random()-0.5)*110,
+          y: b.cy + (Math.random()-0.5)*110,
+          cluster: undefined
+        });
+      }
+    });
+    centroids = [];
+    iteration = 0;
+    converged = false;
+    stepBtn.disabled = true;
+    runBtn.disabled = true;
+    statusBadge.textContent = 'Random points added — click "Place Centroids"';
+    drawKmeans();
+    updateStats();
+  });
+
+  drawKmeans();
+  updateStats();
+
+  // ---------- ELBOW METHOD ----------
+  const elbowCanvas = document.getElementById('elbowCanvas');
+  const ectx = elbowCanvas.getContext('2d');
+  const elbowBtn = document.getElementById('elbowBtn');
+  const suggestedKEl = document.getElementById('suggestedK');
+
+  function kmeansRun(pts, k, iterations=50){
+    if(pts.length === 0 || k === 0) return {wcss:0, assignments:[]};
+    k = Math.min(k, pts.length);
+    let shuffled = [...pts].sort(()=>Math.random()-0.5);
+    let cents = shuffled.slice(0,k).map(p=>({x:p.x,y:p.y}));
+    let assignments = new Array(pts.length).fill(0);
+
+    for(let it=0; it<iterations; it++){
+      let changed = false;
+      pts.forEach((p,idx)=>{
+        let best=0, bestDist=Infinity;
+        cents.forEach((c,ci)=>{
+          const d = (p.x-c.x)**2 + (p.y-c.y)**2;
+          if(d<bestDist){bestDist=d; best=ci;}
+        });
+        if(assignments[idx]!==best){ assignments[idx]=best; changed=true; }
+      });
+      cents.forEach((c,ci)=>{
+        const members = pts.filter((p,idx)=>assignments[idx]===ci);
+        if(members.length===0) return;
+        c.x = members.reduce((s,p)=>s+p.x,0)/members.length;
+        c.y = members.reduce((s,p)=>s+p.y,0)/members.length;
+      });
+      if(!changed) break;
+    }
+
+    let wcss = 0;
+    pts.forEach((p,idx)=>{
+      const c = cents[assignments[idx]];
+      wcss += (p.x-c.x)**2 + (p.y-c.y)**2;
+    });
+    return {wcss, cents, assignments};
+  }
+
+  function findElbowK(wcssArr){
+    // simple "distance from line" heuristic between first and last point
+    const n = wcssArr.length;
+    if(n < 3) return 1;
+    const x1=1, y1=wcssArr[0];
+    const x2=n, y2=wcssArr[n-1];
+    let maxDist = -1, elbowIdx = 0;
+    for(let i=0;i<n;i++){
+      const x0 = i+1, y0 = wcssArr[i];
+      const num = Math.abs((y2-y1)*x0 - (x2-x1)*y0 + x2*y1 - y2*x1);
+      const den = Math.sqrt((y2-y1)**2 + (x2-x1)**2);
+      const d = den===0 ? 0 : num/den;
+      if(d > maxDist){ maxDist = d; elbowIdx = i; }
+    }
+    return elbowIdx+1;
+  }
+
+  function drawElbow(wcssArr){
+    ectx.clearRect(0,0,elbowCanvas.width, elbowCanvas.height);
+    const padding = {left:60, right:30, top:30, bottom:50};
+    const w = elbowCanvas.width - padding.left - padding.right;
+    const h = elbowCanvas.height - padding.top - padding.bottom;
+    const maxWCSS = Math.max(...wcssArr) * 1.1 || 1;
+    const n = wcssArr.length;
+
+    // axes
+    ectx.strokeStyle = '#3a4150';
+    ectx.lineWidth = 1.5;
+    ectx.beginPath();
+    ectx.moveTo(padding.left, padding.top);
+    ectx.lineTo(padding.left, padding.top+h);
+    ectx.lineTo(padding.left+w, padding.top+h);
+    ectx.stroke();
+
+    // y ticks
+    ectx.fillStyle = '#8b93a7';
+    ectx.font = '11px Segoe UI, sans-serif';
+    ectx.textAlign = 'right';
+    for(let i=0;i<=4;i++){
+      const val = maxWCSS * (1 - i/4);
+      const y = padding.top + (h*i/4);
+      ectx.fillText(Math.round(val), padding.left-8, y+4);
+      ectx.strokeStyle = '#1a1f29';
+      ectx.beginPath();
+      ectx.moveTo(padding.left, y);
+      ectx.lineTo(padding.left+w, y);
+      ectx.stroke();
+    }
+
+    // x ticks + line + points
+    ectx.textAlign = 'center';
+    const pts2d = wcssArr.map((val,i)=>{
+      const x = padding.left + (w * i/(n-1||1));
+      const y = padding.top + h - (val/maxWCSS)*h;
+      return {x,y};
+    });
+
+    ectx.strokeStyle = '#5eead4';
+    ectx.lineWidth = 2.5;
+    ectx.beginPath();
+    pts2d.forEach((p,i)=>{
+      if(i===0) ectx.moveTo(p.x,p.y); else ectx.lineTo(p.x,p.y);
+    });
+    ectx.stroke();
+
+    const elbowK = findElbowK(wcssArr);
+
+    pts2d.forEach((p,i)=>{
+      ectx.beginPath();
+      ectx.arc(p.x,p.y, (i+1===elbowK)?7:4.5, 0, Math.PI*2);
+      ectx.fillStyle = (i+1===elbowK) ? '#f5a623' : '#5eead4';
+      ectx.fill();
+      if(i+1===elbowK){
+        ectx.lineWidth = 2;
+        ectx.strokeStyle = '#ffffff';
+        ectx.stroke();
+      }
+      ectx.fillStyle = '#8b93a7';
+      ectx.fillText(String(i+1), p.x, padding.top+h+18);
+    });
+
+    // axis labels
+    ectx.fillStyle = '#e8ecf3';
+    ectx.font = '12px Segoe UI, sans-serif';
+    ectx.textAlign = 'center';
+    ectx.fillText('Number of clusters (K)', padding.left + w/2, elbowCanvas.height-10);
+    ectx.save();
+    ectx.translate(16, padding.top + h/2);
+    ectx.rotate(-Math.PI/2);
+    ectx.fillText('WCSS', 0, 0);
+    ectx.restore();
+
+    // elbow annotation
+    if(elbowK){
+      const ep = pts2d[elbowK-1];
+      ectx.strokeStyle = '#f5a623';
+      ectx.setLineDash([4,4]);
+      ectx.lineWidth = 1;
+      ectx.beginPath();
+      ectx.moveTo(ep.x, padding.top);
+      ectx.lineTo(ep.x, padding.top+h);
+      ectx.stroke();
+      ectx.setLineDash([]);
+    }
+
+    return elbowK;
+  }
+
+  elbowBtn.addEventListener('click', ()=>{
+    if(points.length < 2){
+      suggestedKEl.textContent = 'Add ≥2 points on the left first';
+      return;
+    }
+    const maxK = Math.min(8, points.length);
+    const wcssArr = [];
+    for(let k=1; k<=maxK; k++){
+      const {wcss} = kmeansRun(points, k, 60);
+      wcssArr.push(wcss);
+    }
+    const elbowK = drawElbow(wcssArr);
+    suggestedKEl.textContent = elbowK;
+  });
+
+})();
+</script>
+
+</body>
+</html>
